@@ -97,6 +97,8 @@ jobs:
         with:
           target: 'http://localhost:8085'
           cmd_options: '-I'
+          allow_issue_writing: false
+          artifact_name: zap-scan-qa
 
       - name: Stop container
         if: always()
