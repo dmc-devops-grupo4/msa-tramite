@@ -1,16 +1,16 @@
-name: Flujo Prod
+name: Dev Flow
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
   workflow_dispatch:
 
 env:
   IMAGE_NAME: msa-tramite
 
 jobs:
-  pruebas-unitarias-qa:
-    name: QA unit tests
+  pruebas-unitarias:
+    name: Unit tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,52 +34,52 @@ jobs:
         if: always()
         with:
           report_paths: '**/target/surefire-reports/TEST-*.xml'
-          check_name: QA unit test results
+          check_name: Unit test results
 
       - name: Upload test report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: surefire-reports-qa
+          name: surefire-reports
           path: '**/target/surefire-reports'
           retention-days: 7
 
-  build-qa:
-    name: Build qa
-    needs: pruebas-unitarias-qa
+  build-dev:
+    name: Build dev
+    needs: pruebas-unitarias
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build qa image
-        run: docker build -t $IMAGE_NAME:qa-${{ github.sha }} .
+      - name: Build dev image
+        run: docker build -t $IMAGE_NAME:dev-${{ github.sha }} .
 
-      - name: Export qa image
-        run: docker save $IMAGE_NAME:qa-${{ github.sha }} -o image-qa.tar
+      - name: Export dev image
+        run: docker save $IMAGE_NAME:dev-${{ github.sha }} -o image-dev.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: image-qa-${{ github.sha }}
-          path: image-qa.tar
+          name: image-dev-${{ github.sha }}
+          path: image-dev.tar
           retention-days: 1
 
   owasp-scan:
     name: OWASP ZAP baseline scan
-    needs: build-qa
+    needs: build-dev
     runs-on: ubuntu-latest
     steps:
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
-          name: image-qa-${{ github.sha }}
+          name: image-dev-${{ github.sha }}
 
-      - name: Load qa image
-        run: docker load -i image-qa.tar
+      - name: Load dev image
+        run: docker load -i image-dev.tar
 
-      - name: Start qa container
-        run: docker run -d --name app-qa -p 8085:8085 $IMAGE_NAME:qa-${{ github.sha }}
+      - name: Start dev container
+        run: docker run -d --name app-dev -p 8085:8085 $IMAGE_NAME:dev-${{ github.sha }}
 
       - name: Wait for readiness
         run: |
@@ -114,24 +114,24 @@ jobs:
 
       - name: Stop container
         if: always()
-        run: docker rm -f app-qa || true
+        run: docker rm -f app-dev || true
 
-  deploy-qa:
-    name: Deploy qa
-    needs: [build-qa, owasp-scan]
+  deploy-dev:
+    name: Deploy dev
+    needs: [build-dev, owasp-scan]
     runs-on: ubuntu-latest
-    environment: qa
+    environment: dev
     steps:
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
-          name: image-qa-${{ github.sha }}
+          name: image-dev-${{ github.sha }}
 
-      - name: Load qa image
-        run: docker load -i image-qa.tar
+      - name: Load dev image
+        run: docker load -i image-dev.tar
 
-      - name: Deploy qa
-        run: docker run -d --name app-qa-deploy -p 8085:8085 $IMAGE_NAME:qa-${{ github.sha }}
+      - name: Deploy dev
+        run: docker run -d --name app-dev-deploy -p 8085:8085 $IMAGE_NAME:dev-${{ github.sha }}
 
       - name: Verify deployment
         run: |
@@ -139,58 +139,8 @@ jobs:
             curl -sf http://localhost:8085/actuator/info && exit 0
             sleep 5
           done
-          echo "QA container did not respond in time"
+          echo "Dev container did not respond in time"
 
       - name: Stop container
         if: always()
-        run: docker rm -f app-qa-deploy || true
-
-  build-prod:
-    name: Build prod
-    needs: deploy-qa
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build prod image
-        run: docker build -t $IMAGE_NAME:prod-${{ github.sha }} .
-
-      - name: Export prod image
-        run: docker save $IMAGE_NAME:prod-${{ github.sha }} -o image-prod.tar
-
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-prod-${{ github.sha }}
-          path: image-prod.tar
-          retention-days: 1
-
-  deploy-prod:
-    name: Deploy prod
-    needs: build-prod
-    runs-on: ubuntu-latest
-    environment: prod
-    steps:
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: image-prod-${{ github.sha }}
-
-      - name: Load prod image
-        run: docker load -i image-prod.tar
-
-      - name: Deploy prod
-        run: docker run -d --name app-prod-deploy -p 8085:8085 $IMAGE_NAME:prod-${{ github.sha }}
-
-      - name: Verify deployment
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8085/actuator/info && exit 0
-            sleep 5
-          done
-          echo "Prod container did not respond in time"
-
-      - name: Stop container
-        if: always()
-        run: docker rm -f app-prod-deploy || true
+        run: docker rm -f app-dev-deploy || true
