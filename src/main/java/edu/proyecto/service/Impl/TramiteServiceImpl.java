@@ -8,8 +8,6 @@ import java.util.stream.Collectors;
 
 import org.mapstruct.factory.Mappers;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import edu.proyecto.dto.EmailTramiteEnviadoDTO;
@@ -28,14 +26,12 @@ import edu.proyecto.repository.TipoDocumentoRepository;
 import edu.proyecto.repository.TramiteArchivoRepository;
 import edu.proyecto.repository.TramiteRepository;
 import edu.proyecto.repository.UsuarioRepository;
+import edu.proyecto.repository.NotificacionRepository;
 import edu.proyecto.service.TramiteService;
 import edu.proyecto.utils.Helper;
 
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class TramiteServiceImpl implements TramiteService {
@@ -52,12 +48,7 @@ public class TramiteServiceImpl implements TramiteService {
     @Autowired
     private ArchivoRepository archivoRepository;
     @Autowired
-    private KafkaTemplate kafkaTemplate;
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Value("${topico.tramite-enviado}")
-    private String topicoTramiteEnviado;
+    private NotificacionRepository notificacionRepository;
 
     TramiteMapper mapper = Mappers.getMapper(TramiteMapper.class);
 
@@ -115,22 +106,12 @@ public class TramiteServiceImpl implements TramiteService {
 
             tramiteArchivoRepository.save(tramiteArchivo);
         }
-        
-        try {
-            String jsonMessage = objectMapper.writeValueAsString(
+        notificacionRepository.notificarTramiteEnviado(
                 new EmailTramiteEnviadoDTO(
                     usuarioEntity.getCorreo(), 
                     usuarioEntity.getNombres(),
                     tramiteEntity.getNroDocumento(),
-                    tramiteEntity.getAsunto()
-                ));
-    
-            System.out.println("Mensaje: " + jsonMessage);
-            kafkaTemplate.send(topicoTramiteEnviado, jsonMessage);
-
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
+                    tramiteEntity.getAsunto()));
         return mapper.toTramiteDto(tramiteEntity);
     }
     
